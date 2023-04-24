@@ -3,59 +3,58 @@
 //|                        Copyright 2017, MetaQuotes Software Corp. |
 //|                                            Автор:Вячеслав Нилов  |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2021, MetaQuotes Software Corp."
-#property link      "https://www.mql5.com"
+#property copyright "Copyright 2021, Forex Tester Software Inc."
+#property link      "http://www.forextester.com"
 #property version   "1.00"
 #property strict
 
-//+------------------------------------------------------------------+
-//| Global variables                                                 |
-//+------------------------------------------------------------------+
-double balance, equity, profit;
-int text_handle;
+// Входные параметры
+input color TextColor = clrWhite; // Цвет текста
+input int FontSize = 12; // Размер шрифта
+input string FontName = "Arial"; // Название шрифта
+
+// Переменные
+double Balance, Equity, Profit, Loss;
 
 //+------------------------------------------------------------------+
-//| Expert initialization function                                   |
+//| Инициализация советника                                          |
 //+------------------------------------------------------------------+
-int OnInit()
+void OnInit()
 {
-   // Create text object for displaying balance, equity and profit
-   text_handle = ObjectsCreate(0, "BalanceInfo", OBJ_LABEL, 0, 0, 0);
-   ObjectSetString(text_handle, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(text_handle, OBJPROP_FONTSIZE, 12);
-   ObjectSetInteger(text_handle, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
-   ObjectSetInteger(text_handle, OBJPROP_XDISTANCE, 10);
-   ObjectSetInteger(text_handle, OBJPROP_YDISTANCE, 10);
-   ObjectSetInteger(text_handle, OBJPROP_BACK, true);
-   ObjectSetInteger(text_handle, OBJPROP_COLOR, clrWhite);
-   ObjectSetInteger(text_handle, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-   ObjectSetInteger(text_handle, OBJPROP_BORDER_COLOR, clrBlack);
-   ObjectSetInteger(text_handle, OBJPROP_BORDER_WIDTH, 1);
-   ObjectSetInteger(text_handle, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(text_handle, OBJPROP_HIDDEN, false);
-   return(INIT_SUCCEEDED);
+   // Установка цвета фона графика
+   SetChartBkColor(TextColor);
 }
 
 //+------------------------------------------------------------------+
-//| Expert deinitialization function                                 |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   // Delete text object
-   ObjectsDelete(text_handle);
-}
-
-//+------------------------------------------------------------------+
-//| Expert tick function                                             |
+//| Обновление информации на графике                                 |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Get account information
-   balance = AccountBalance();
-   equity = AccountEquity();
-   profit = equity - balance;
+   // Получение текущих значений баланса, эквити, прибыли и убытка
+   Balance = AccountBalance();
+   Equity = AccountEquity();
+   Profit = Equity - Balance;
+   Loss = Balance - Equity;
 
-   // Update text object with account information
-   string text = "Balance: " + DoubleToStr(balance, 2) + "\nEquity: " + DoubleToStr(equity, 2) + "\nProfit: " + DoubleToStr(profit, 2);
-   ObjectSetString(text_handle, OBJPROP_TEXT, text);
+   // Формирование строки с информацией
+   string info = "Balance: " + DoubleToStr(Balance, 2) + "\n" +
+                 "Equity: " + DoubleToStr(Equity, 2) + "\n" +
+                 "Profit: " + DoubleToStr(Profit, 2) + "\n" +
+                 "Loss: " + DoubleToStr(Loss, 2);
+
+   // Вывод информации на график
+   Comment(info);
+   ObjectCreate("InfoDisplay", OBJ_LABEL, 0, 0, 0);
+   ObjectSetText("InfoDisplay", info, FontSize, FontName, TextColor);
+   ObjectSet("InfoDisplay", OBJPROP_CORNER, 0);
+   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 10);
+   ObjectSet("InfoDisplay", OBJPROP_YDISTANCE, 10);
+}
+
+//+------------------------------------------------------------------+
+//| Удаление объектов при закрытии советника                         |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectDelete("InfoDisplay");
 }
