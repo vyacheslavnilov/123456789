@@ -9,12 +9,12 @@
 #property strict
 
 // Входные параметры
-input color TextColor = clrWhite; // Цвет текста
-input int FontSize = 12; // Размер шрифта
-input string FontName = "Arial"; // Название шрифта
+input color TextColor = clrGold; // Цвет текста
+input int FontSize = 30; // Размер шрифта
+input string FontName = "Monotype Corsiva"; // Название шрифта
 
 // Переменные
-double Balance, Equity, Profit, Loss;
+double Balance, Equity, Profit;
 
 //+------------------------------------------------------------------+
 //| Инициализация советника                                          |
@@ -29,20 +29,19 @@ void OnTick()
    Balance = AccountBalance();
    Equity = AccountEquity();
    Profit = Equity - Balance;
-   Loss = Balance - Equity;
+   
 
    // Формирование строки с информацией
    string info = "Balance: " + DoubleToStr(Balance, 2) + "\n" +
                  "Equity: " + DoubleToStr(Equity, 2) + "\n" +
-                 "Profit: " + DoubleToStr(Profit, 2) + "\n" +
-                 "Loss: " + DoubleToStr(Loss, 2);
+                 "Profit: " + DoubleToStr(Profit, 2);
 
    // Вывод информации на график
    Comment(info);
    ObjectCreate("InfoDisplay", OBJ_LABEL, 0, 0, 0);
    ObjectSetText("InfoDisplay", info, FontSize, FontName, TextColor);
    ObjectSet("InfoDisplay", OBJPROP_CORNER, 0);
-   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 500);
+   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 600);
    ObjectSet("InfoDisplay", OBJPROP_YDISTANCE, 0);
 }
 
