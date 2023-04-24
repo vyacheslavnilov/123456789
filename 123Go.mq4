@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //|                           Первый самостоятельный вместе с НС.mq4 |
 //|                        Copyright 2017, MetaQuotes Software Corp. |
-//|                                            Автор:Вячеслав Нилов  |
+//|                                            Автор: Вячеслав Нилов |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2021, Forex Tester Software Inc."
 #property link      "http://www.forextester.com"
@@ -19,11 +19,6 @@ double Balance, Equity, Profit, Loss;
 //+------------------------------------------------------------------+
 //| Инициализация советника                                          |
 //+------------------------------------------------------------------+
-void OnInit()
-{
-   // Установка цвета фона графика
-   SetChartBkColor(TextColor);
-}
 
 //+------------------------------------------------------------------+
 //| Обновление информации на графике                                 |
@@ -47,8 +42,8 @@ void OnTick()
    ObjectCreate("InfoDisplay", OBJ_LABEL, 0, 0, 0);
    ObjectSetText("InfoDisplay", info, FontSize, FontName, TextColor);
    ObjectSet("InfoDisplay", OBJPROP_CORNER, 0);
-   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 10);
-   ObjectSet("InfoDisplay", OBJPROP_YDISTANCE, 10);
+   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 500);
+   ObjectSet("InfoDisplay", OBJPROP_YDISTANCE, 0);
 }
 
 //+------------------------------------------------------------------+
