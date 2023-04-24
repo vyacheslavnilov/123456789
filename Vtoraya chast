@@ -118,3 +118,98 @@ void OnTick()
     lastUpLine = upLine;
     lastDownLine = downLine;
 }
+double stopLoss;
+double takeProfit;
+int magicNumber = 12345;
+
+// функция инициализации
+int init()
+{
+    // установка размера лота
+    lotSize = NormalizeDouble(AccountBalance() * 0.01 / 1000, 2);
+    startLotSize = lotSize;
+    
+    // установка параметров стоп-лосса и тейк-профита
+    stopLoss = 100;
+    takeProfit = 200;
+    
+    return(0);
+}
+
+// функция для открытия ордера
+void openOrder(int type)
+{
+    // расчет цены открытия ордера
+    double price = 0;
+    if(type == OP_BUY)
+    {
+        price = Ask;
+    }
+    else if(type == OP_SELL)
+    {
+        price = Bid;
+    }
+    
+    // расчет размера лота
+    lotSize = NormalizeDouble(startLotSize * (AccountBalance() / 1000), 2);
+    
+    // открытие ордера
+    int ticket = OrderSend(Symbol(), type, lotSize, price, 0, stopLoss, takeProfit, "Expert Advisor", magicNumber, 0, Blue);
+    
+    // проверка на успешное открытие ордера
+    if(ticket > 0)
+    {
+        Print("Order opened successfully");
+    }
+    else
+    {
+        Print("Error opening order: ", GetLastError());
+    }
+}
+
+// функция для закрытия ордера
+void closeOrder(int ticket)
+{
+    // закрытие ордера
+    bool result = OrderClose(ticket, lotSize, Bid, 0, Red);
+    
+    // проверка на успешное закрытие ордера
+    if(result)
+    {
+        Print("Order closed successfully");
+    }
+    else
+    {
+        Print("Error closing order: ", GetLastError());
+    }
+}
+
+// функция для обработки событий
+void OnTick()
+{
+    // проверка на наличие открытых ордеров
+    int orders = OrdersTotal();
+    if(orders == 0)
+    {
+        // открытие ордера на покупку
+        openOrder(OP_BUY);
+    }
+    else
+    {
+        // проверка на наличие открытых ордеров с магическим номером
+        for(int i = 0; i < orders; i++)
+        {
+            if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+            {
+                if(OrderMagicNumber() == magicNumber)
+                {
+                    // закрытие ордера на продажу
+                    closeOrder(OrderTicket());
+                    
+                    // открытие ордера на покупку
+                    openOrder(OP_BUY);
+                }
+            }
+        }
+    }
+}
