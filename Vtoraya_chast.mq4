@@ -1,97 +1,254 @@
-// объявление переменных
-double lotSize; // размер лота
-double startLotSize; // изначальный размер лота
-double balance; // текущий баланс
-double percent; // процент от текущего баланса для установки изначального размера лота
-double upLevel; // уровень линии "UP"
-double downLevel; // уровень линии "DOWN"
-double lastUpLevel; // последний уровень линии "UP"
-double lastDownLevel; // последний уровень линии "DOWN"
-bool upOrderOpened = false; // флаг открытия ордера по линии "UP"
-bool downOrderOpened = false; // флаг открытия ордера по линии "DOWN"
-int upOrderTicket; // номер ордера по линии "UP"
-int downOrderTicket; // номер ордера по линии "DOWN"
+//+------------------------------------------------------------------+
+//|                                                       ZigZag.mq4 |
+//|                   Copyright 2006-2014, MetaQuotes Software Corp. |
+//|                                              http://www.mql4.com |
+//+------------------------------------------------------------------+
+#property copyright "2006-2014, MetaQuotes Software Corp."
+#property link      "http://www.mql4.com"
+#property strict
 
-// функция для расчета размера лота
-void calculateLotSize() {
-    balance = AccountBalance();
-    lotSize = NormalizeDouble(balance * percent / 100 / MarketInfo(Symbol(), MODE_TICKSIZE), 2);
-}
-
-// функция для открытия ордера BUY
-void openBuyOrder() {
-    double stopLoss = downLevel;
-    double takeProfit = upLevel - downLevel;
-    int ticket = OrderSend(Symbol(), OP_BUY, lotSize, Ask, 3, stopLoss, Ask + takeProfit, "Buy Order", MagicNumber, 0, Green);
-    if (ticket > 0) {
-        upOrderOpened = true;
-        upOrderTicket = ticket;
-    }
-}
-
-// функция для открытия ордера SELL
-void openSellOrder() {
-    double stopLoss = upLevel;
-    double takeProfit = upLevel - downLevel;
-    int ticket = OrderSend(Symbol(), OP_SELL, lotSize, Bid, 3, stopLoss, Bid - takeProfit, "Sell Order", MagicNumber, 0, Red);
-    if (ticket > 0) {
-        downOrderOpened = true;
-        downOrderTicket = ticket;
-    }
-}
-
-// функция для закрытия ордера
-void closeOrder(int ticket) {
-    double profit = OrderProfit();
-    if (profit > 0) {
-        OrderClose(ticket, lotSize, Bid, 3, Green);
-        calculateLotSize();
-    } else if (profit < 0) {
-        OrderClose(ticket, lotSize, Ask, 3, Red);
-        openSellOrder();
-    }
-}
-
-// функция для обновления уровней линий
-void updateLevels() {
-    lastUpLevel = upLevel;
-    lastDownLevel = downLevel;
-    upLevel = ObjectGetDouble(0, "UP", OBJ_PRICE1);
-    downLevel = ObjectGetDouble(0, "DOWN", OBJ_PRICE1);
-}
-
-// функция для проверки условий открытия ордера
-void checkOpenOrderConditions() {
-    if (!upOrderOpened && Bid > upLevel && (upLevel - lastUpLevel > 17 || downOrderOpened && OrderProfit(downOrderTicket) > 0)) {
-        openBuyOrder();
-    } else if (!downOrderOpened && Ask < downLevel && (lastDownLevel - downLevel > 17 || upOrderOpened && OrderProfit(upOrderTicket) > 0)) {
-        openSellOrder();
-    }
-}
-
-// функция для проверки условий закрытия ордера
-void checkCloseOrderConditions() {
-    if (upOrderOpened && Bid > upLevel + 17 && OrderProfit(upOrderTicket) > 0) {
-        closeOrder(upOrderTicket);
-        upOrderOpened = false;
-    } else if (downOrderOpened && Ask < downLevel - 17 && OrderProfit(downOrderTicket) > 0) {
-        closeOrder(downOrderTicket);
-        downOrderOpened = false;
-    }
-}
-
-// функция для обработки событий
-void OnTick() {
-    updateLevels();
-    checkOpenOrderConditions();
-    checkCloseOrderConditions();
-}
-
-// функция для инициализации советника/эксперта
-void OnInit() {
-    percent = 5; // установка процента от текущего баланса для установки изначального размера лота
-    calculateLotSize();
-    startLotSize = lotSize;
-    upLevel = ObjectGetDouble(0, "UP", OBJ_PRICE1);
-    downLevel = ObjectGetDouble(0, "DOWN", OBJ_PRICE1);
-}
+#property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_color1  Red
+//---- indicator parameters
+input int InpDepth=30;     // Depth
+input int InpDeviation=30;  // Deviation
+input int InpBackstep=3;   // Backstep
+//---- indicator buffers
+double ExtZigzagBuffer[];
+double ExtHighBuffer[];
+double ExtLowBuffer[];
+//--- globals
+int    ExtLevel=3; // recounting's depth of extremums
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   if(InpBackstep>=InpDepth)
+     {
+      Print("Backstep cannot be greater or equal to Depth");
+      return(INIT_FAILED);
+     }
+//--- 2 additional buffers
+   IndicatorBuffers(3);
+//---- drawing settings
+   SetIndexStyle(0,DRAW_SECTION);
+//---- indicator buffers
+   SetIndexBuffer(0,ExtZigzagBuffer);
+   SetIndexBuffer(1,ExtHighBuffer);
+   SetIndexBuffer(2,ExtLowBuffer);
+   SetIndexEmptyValue(0,0.0);
+//---- indicator short name
+   IndicatorShortName("ZigZag("+string(InpDepth)+","+string(InpDeviation)+","+string(InpBackstep)+")");
+//---- initialization done
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double &open[],
+                const double &high[],
+                const double &low[],
+                const double &close[],
+                const long& tick_volume[],
+                const long& volume[],
+                const int& spread[])
+  {
+   int    i,limit,counterZ,whatlookfor=0;
+   int    back,pos,lasthighpos=0,lastlowpos=0;
+   double extremum;
+   double curlow=0.0,curhigh=0.0,lasthigh=0.0,lastlow=0.0;
+//--- check for history and inputs
+   if(rates_total<InpDepth || InpBackstep>=InpDepth)
+      return(0);
+//--- first calculations
+   if(prev_calculated==0)
+      limit=InitializeAll();
+   else 
+     {
+      //--- find first extremum in the depth ExtLevel or 100 last bars
+      i=counterZ=0;
+      while(counterZ<ExtLevel && i<100)
+        {
+         if(ExtZigzagBuffer[i]!=0.0)
+            counterZ++;
+         i++;
+        }
+      //--- no extremum found - recounting all from begin
+      if(counterZ==0)
+         limit=InitializeAll();
+      else
+        {
+         //--- set start position to found extremum position
+         limit=i-1;
+         //--- what kind of extremum?
+         if(ExtLowBuffer[i]!=0.0) 
+           {
+            //--- low extremum
+            curlow=ExtLowBuffer[i];
+            //--- will look for the next high extremum
+            whatlookfor=1;
+           }
+         else
+           {
+            //--- high extremum
+            curhigh=ExtHighBuffer[i];
+            //--- will look for the next low extremum
+            whatlookfor=-1;
+           }
+         //--- clear the rest data
+         for(i=limit-1; i>=0; i--)  
+           {
+            ExtZigzagBuffer[i]=0.0;  
+            ExtLowBuffer[i]=0.0;
+            ExtHighBuffer[i]=0.0;
+           }
+        }
+     }
+//--- main loop      
+   for(i=limit; i>=0; i--)
+     {
+      //--- find lowest low in depth of bars
+      extremum=low[iLowest(NULL,0,MODE_LOW,InpDepth,i)];
+      //--- this lowest has been found previously
+      if(extremum==lastlow)
+         extremum=0.0;
+      else 
+        { 
+         //--- new last low
+         lastlow=extremum; 
+         //--- discard extremum if current low is too high
+         if(low[i]-extremum>InpDeviation*Point)
+            extremum=0.0;
+         else
+           {
+            //--- clear previous extremums in backstep bars
+            for(back=1; back<=InpBackstep; back++)
+              {
+               pos=i+back;
+               if(ExtLowBuffer[pos]!=0 && ExtLowBuffer[pos]>extremum)
+                  ExtLowBuffer[pos]=0.0; 
+              }
+           }
+        } 
+      //--- found extremum is current low
+      if(low[i]==extremum)
+         ExtLowBuffer[i]=extremum;
+      else
+         ExtLowBuffer[i]=0.0;
+      //--- find highest high in depth of bars
+      extremum=high[iHighest(NULL,0,MODE_HIGH,InpDepth,i)];
+      //--- this highest has been found previously
+      if(extremum==lasthigh)
+         extremum=0.0;
+      else 
+        {
+         //--- new last high
+         lasthigh=extremum;
+         //--- discard extremum if current high is too low
+         if(extremum-high[i]>InpDeviation*Point)
+            extremum=0.0;
+         else
+           {
+            //--- clear previous extremums in backstep bars
+            for(back=1; back<=InpBackstep; back++)
+              {
+               pos=i+back;
+               if(ExtHighBuffer[pos]!=0 && ExtHighBuffer[pos]<extremum)
+                  ExtHighBuffer[pos]=0.0; 
+              } 
+           }
+        }
+      //--- found extremum is current high
+      if(high[i]==extremum)
+         ExtHighBuffer[i]=extremum;
+      else
+         ExtHighBuffer[i]=0.0;
+     }
+//--- final cutting 
+   if(whatlookfor==0)
+     {
+      lastlow=0.0;
+      lasthigh=0.0;  
+     }
+   else
+     {
+      lastlow=curlow;
+      lasthigh=curhigh;
+     }
+   for(i=limit; i>=0; i--)
+     {
+      switch(whatlookfor)
+        {
+         case 0: // look for peak or lawn 
+            if(lastlow==0.0 && lasthigh==0.0)
+              {
+               if(ExtHighBuffer[i]!=0.0)
+                 {
+                  lasthigh=High[i];
+                  lasthighpos=i;
+                  whatlookfor=-1;
+                  ExtZigzagBuffer[i]=lasthigh;
+                 }
+               if(ExtLowBuffer[i]!=0.0)
+                 {
+                  lastlow=Low[i];
+                  lastlowpos=i;
+                  whatlookfor=1;
+                  ExtZigzagBuffer[i]=lastlow;
+                 }
+              }
+             break;  
+         case 1: // look for peak
+            if(ExtLowBuffer[i]!=0.0 && ExtLowBuffer[i]<lastlow && ExtHighBuffer[i]==0.0)
+              {
+               ExtZigzagBuffer[lastlowpos]=0.0;
+               lastlowpos=i;
+               lastlow=ExtLowBuffer[i];
+               ExtZigzagBuffer[i]=lastlow;
+              }
+            if(ExtHighBuffer[i]!=0.0 && ExtLowBuffer[i]==0.0)
+              {
+               lasthigh=ExtHighBuffer[i];
+               lasthighpos=i;
+               ExtZigzagBuffer[i]=lasthigh;
+               whatlookfor=-1;
+              }   
+            break;               
+         case -1: // look for lawn
+            if(ExtHighBuffer[i]!=0.0 && ExtHighBuffer[i]>lasthigh && ExtLowBuffer[i]==0.0)
+              {
+               ExtZigzagBuffer[lasthighpos]=0.0;
+               lasthighpos=i;
+               lasthigh=ExtHighBuffer[i];
+               ExtZigzagBuffer[i]=lasthigh;
+              }
+            if(ExtLowBuffer[i]!=0.0 && ExtHighBuffer[i]==0.0)
+              {
+               lastlow=ExtLowBuffer[i];
+               lastlowpos=i;
+               ExtZigzagBuffer[i]=lastlow;
+               whatlookfor=1;
+              }   
+            break;               
+        }
+     }
+//--- done
+   return(rates_total);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int InitializeAll()
+  {
+   ArrayInitialize(ExtZigzagBuffer,0.0);
+   ArrayInitialize(ExtHighBuffer,0.0);
+   ArrayInitialize(ExtLowBuffer,0.0);
+//--- first counting position
+   return(Bars-InpDepth);
+  }
+//+------------------------------------------------------------------+
