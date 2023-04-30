@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
-//|                           Первый самостоятельный вместе с НС.mq4 |
-//|                        Copyright 2017, MetaQuotes Software Corp. |
+//|                                  Мой Первый Код_Аккаунт инфо.mq4 |
+//|                                         Написано в MetaEditor 5.0|
 //|                                            Автор: Вячеслав Нилов |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2021, Forex Tester Software Inc."
-#property link      "http://www.forextester.com"
+#property link      "vyacheslavnilov@gmail.com"
 #property version   "1.00"
 #property strict
 
