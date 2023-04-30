@@ -1,246 +1,78 @@
+//+------------------------------------------------------------------+
+//|                                                  chernovik.mq4 |
+//|                        Copyright 2021, Vyacheslav Nilov         |
+//|                                             https://github.com/vyacheslavnilov |
+//+------------------------------------------------------------------+
 #property indicator_chart_window
-#property indicator_buffers 1
-#property indicator_color1  Red
-//---- indicator parameters
-input int InpDepth=30;     // Глубина
-input int InpDeviation=30;  // Отклонение
-input int InpBackstep=3;   // Шаг назад
-//---- indicator buffers
-double ExtZigzagBuffer[];
-double ExtHighBuffer[];
-double ExtLowBuffer[];
-//--- globals
-int    ExtLevel=3; // recounting's depth of extremums
+#property indicator_buffers 2
+#property indicator_color1 Red
+#property indicator_color2 Blue
+
+double VertexBuffer[];
+double HollowBuffer[];
 
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
 int OnInit()
-  {
-   if(InpBackstep>=InpDepth)
-     {
-      Print("Backstep cannot be greater or equal to Depth");
-      return(INIT_FAILED);
-     }
-//--- 2 additional buffers
-   IndicatorBuffers(3);
-//---- drawing settings
-   SetIndexStyle(0,DRAW_SECTION);
-//---- indicator buffers
-   SetIndexBuffer(0,ExtZigzagBuffer);
-   SetIndexBuffer(1,ExtHighBuffer);
-   SetIndexBuffer(2,ExtLowBuffer);
-   SetIndexEmptyValue(0,0.0);
-//---- indicator short name
-   IndicatorShortName("ZigZag("+string(InpDepth)+","+string(InpDeviation)+","+string(InpBackstep)+")");
-//---- initialization done
-   return(INIT_SUCCEEDED);
-  }
+{
+    IndicatorShortName("Vertex and Hollow");
+    SetIndexStyle(0, DRAW_LINE);
+    SetIndexStyle(1, DRAW_LINE);
+    SetIndexBuffer(0, VertexBuffer);
+    SetIndexBuffer(1, HollowBuffer);
+    SetIndexLabel(0, "Vertex");
+    SetIndexLabel(1, "Hollow");
+    return(INIT_SUCCEEDED);
+}
+
 //+------------------------------------------------------------------+
-//|                                                                  |
+//| Custom indicator iteration function                              |
 //+------------------------------------------------------------------+
-int OnCalculate(const int rates_total,
-                const int prev_calculated,
-                const datetime &time[],
-                const double &open[],
-                const double &high[],
-                const double &low[],
-                const double &close[],
-                const long& tick_volume[],
-                const long& volume[],
-                const int& spread[])
-  {
-   int    i,limit,counterZ,whatlookfor=0;
-   int    back,pos,lasthighpos=0,lastlowpos=0;
-   double extremum;
-   double curlow=0.0,curhigh=0.0,lasthigh=0.0,lastlow=0.0;
-//--- check for history and inputs
-   if(rates_total<InpDepth || InpBackstep>=InpDepth)
-      return(0);
-//--- first calculations
-   if(prev_calculated==0)
-      limit=InitializeAll();
-   else 
-     {
-      //--- find first extremum in the depth ExtLevel or 100 last bars
-      i=counterZ=0;
-      while(counterZ<ExtLevel && i<100)
+int OnCalculate(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[])
+{
+    int limit = rates_total - prev_calculated;
+    if (limit <= 0) return(0);
+
+    for (int i = 0; i < limit; i++)
+    {
+        double vertex = 0;
+        double hollow = 0;
+        int vertexCount = 0;
+        int hollowCount = 0;
+
+        for (int j = i; j < i + 7; j++)
         {
-         if(ExtZigzagBuffer[i]!=0.0)
-            counterZ++;
-         i++;
+            if (high[j] > high[j + 1] && high[j] > high[j - 1])
+            {
+                vertex += high[j];
+                vertexCount++;
+            }
+            if (low[j] < low[j + 1] && low[j] < low[j - 1])
+            {
+                hollow += low[j];
+                hollowCount++;
+            }
         }
-      //--- no extremum found - recounting all from begin
-      if(counterZ==0)
-         limit=InitializeAll();
-      else
+
+        if (vertexCount > 0)
         {
-         //--- set start position to found extremum position
-         limit=i-1;
-         //--- what kind of extremum?
-         if(ExtLowBuffer[i]!=0.0) 
-           {
-            //--- low extremum
-            curlow=ExtLowBuffer[i];
-            //--- will look for the next high extremum
-            whatlookfor=1;
-           }
-         else
-           {
-            //--- high extremum
-            curhigh=ExtHighBuffer[i];
-            //--- will look for the next low extremum
-            whatlookfor=-1;
-           }
-         //--- clear the rest data
-         for(i=limit-1; i>=0; i--)  
-           {
-            ExtZigzagBuffer[i]=0.0;  
-            ExtLowBuffer[i]=0.0;
-            ExtHighBuffer[i]=0.0;
-           }
+            VertexBuffer[i] = vertex / vertexCount;
         }
-     }
-//--- main loop      
-   for(i=limit; i>=0; i--)
-     {
-      //--- find lowest low in depth of bars
-      extremum=low[iLowest(NULL,0,MODE_LOW,InpDepth,i)];
-      //--- this lowest has been found previously
-      if(extremum==lastlow)
-         extremum=0.0;
-      else 
-        { 
-         //--- new last low
-         lastlow=extremum; 
-         //--- discard extremum if current low is too high
-         if(low[i]-extremum>InpDeviation*Point)
-            extremum=0.0;
-         else
-           {
-            //--- clear previous extremums in backstep bars
-            for(back=1; back<=InpBackstep; back++)
-              {
-               pos=i+back;
-               if(ExtLowBuffer[pos]!=0 && ExtLowBuffer[pos]>extremum)
-                  ExtLowBuffer[pos]=0.0; 
-              }
-           }
-        } 
-      //--- found extremum is current low
-      if(low[i]==extremum)
-         ExtLowBuffer[i]=extremum;
-      else
-         ExtLowBuffer[i]=0.0;
-      //--- find highest high in depth of bars
-      extremum=high[iHighest(NULL,0,MODE_HIGH,InpDepth,i)];
-      //--- this highest has been found previously
-      if(extremum==lasthigh)
-         extremum=0.0;
-      else 
+        else
         {
-         //--- new last high
-         lasthigh=extremum;
-         //--- discard extremum if current high is too low
-         if(extremum-high[i]>InpDeviation*Point)
-            extremum=0.0;
-         else
-           {
-            //--- clear previous extremums in backstep bars
-            for(back=1; back<=InpBackstep; back++)
-              {
-               pos=i+back;
-               if(ExtHighBuffer[pos]!=0 && ExtHighBuffer[pos]<extremum)
-                  ExtHighBuffer[pos]=0.0; 
-              } 
-           }
+            VertexBuffer[i] = 0;
         }
-      //--- found extremum is current high
-      if(high[i]==extremum)
-         ExtHighBuffer[i]=extremum;
-      else
-         ExtHighBuffer[i]=0.0;
-     }
-//--- final cutting 
-   if(whatlookfor==0)
-     {
-      lastlow=0.0;
-      lasthigh=0.0;  
-     }
-   else
-     {
-      lastlow=curlow;
-      lasthigh=curhigh;
-     }
-   for(i=limit; i>=0; i--)
-     {
-      switch(whatlookfor)
+
+        if (hollowCount > 0)
         {
-         case 0: // look for peak or lawn 
-            if(lastlow==0.0 && lasthigh==0.0)
-              {
-               if(ExtHighBuffer[i]!=0.0)
-                 {
-                  lasthigh=High[i];
-                  lasthighpos=i;
-                  whatlookfor=-1;
-                  ExtZigzagBuffer[i]=lasthigh;
-                 }
-               if(ExtLowBuffer[i]!=0.0)
-                 {
-                  lastlow=Low[i];
-                  lastlowpos=i;
-                  whatlookfor=1;
-                  ExtZigzagBuffer[i]=lastlow;
-                 }
-              }
-             break;  
-         case 1: // look for peak
-            if(ExtLowBuffer[i]!=0.0 && ExtLowBuffer[i]<lastlow && ExtHighBuffer[i]==0.0)
-              {
-               ExtZigzagBuffer[lastlowpos]=0.0;
-               lastlowpos=i;
-               lastlow=ExtLowBuffer[i];
-               ExtZigzagBuffer[i]=lastlow;
-              }
-            if(ExtHighBuffer[i]!=0.0 && ExtLowBuffer[i]==0.0)
-              {
-               lasthigh=ExtHighBuffer[i];
-               lasthighpos=i;
-               ExtZigzagBuffer[i]=lasthigh;
-               whatlookfor=-1;
-              }   
-            break;               
-         case -1: // look for lawn
-            if(ExtHighBuffer[i]!=0.0 && ExtHighBuffer[i]>lasthigh && ExtLowBuffer[i]==0.0)
-              {
-               ExtZigzagBuffer[lasthighpos]=0.0;
-               lasthighpos=i;
-               lasthigh=ExtHighBuffer[i];
-               ExtZigzagBuffer[i]=lasthigh;
-              }
-            if(ExtLowBuffer[i]!=0.0 && ExtHighBuffer[i]==0.0)
-              {
-               lastlow=ExtLowBuffer[i];
-               lastlowpos=i;
-               ExtZigzagBuffer[i]=lastlow;
-               whatlookfor=1;
-              }   
-            break;               
+            HollowBuffer[i] = hollow / hollowCount;
         }
-     }
-//--- done
-   return(rates_total);
-  }
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-int InitializeAll()
-  {
-   ArrayInitialize(ExtZigzagBuffer,0.0);
-   ArrayInitialize(ExtHighBuffer,0.0);
-   ArrayInitialize(ExtLowBuffer,0.0);
-//--- first counting position
-   return(Bars-InpDepth);
-  }
-//+------------------------------------------------------------------+
+        else
+        {
+            HollowBuffer[i] = 0;
+        }
+    }
+
+    return(rates_total);
+}
