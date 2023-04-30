@@ -1,7 +1,3 @@
-#property copyright "2006-2014, MetaQuotes Software Corp."
-#property link      "http://www.mql4.com"
-#property strict
-
 #property indicator_chart_window
 #property indicator_buffers 1
 #property indicator_color1  Red
