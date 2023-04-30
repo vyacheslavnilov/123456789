@@ -1,135 +1,250 @@
-#property copyright "Copyright 2021, Forex Tester Software Inc."
-#property link      "vyacheslavnilov@gmail.com"
-#property version   "1.00"
+#property copyright "2006-2014, MetaQuotes Software Corp."
+#property link      "http://www.mql4.com"
 #property strict
 
-//+------------------------------------------------------------------+
-//| Глобальные переменные                                           |
-//+------------------------------------------------------------------+
-
-double price; // цена ask
-double distance; // расстояние от линии "Подъём" до значения цены ask
-int magic = 1230; // magic number для ордера
-double takeProfit; // уровень тейк профита
-
-// Входные параметры
-input color TextColor = clrGold; // Цвет текста
-input int FontSize = 30; // Размер шрифта
-input string FontName = "Monotype Corsiva"; // Название шрифта
-
-// Переменные
-double Balance, Equity, Profit;
+#property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_color1  Red
+//---- indicator parameters
+input int InpDepth=30;     // Глубина
+input int InpDeviation=30;  // Отклонение
+input int InpBackstep=3;   // Шаг назад
+//---- indicator buffers
+double ExtZigzagBuffer[];
+double ExtHighBuffer[];
+double ExtLowBuffer[];
+//--- globals
+int    ExtLevel=3; // recounting's depth of extremums
 
 //+------------------------------------------------------------------+
-//| Инициализация советника                                          |
+//| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
-
+int OnInit()
+  {
+   if(InpBackstep>=InpDepth)
+     {
+      Print("Backstep cannot be greater or equal to Depth");
+      return(INIT_FAILED);
+     }
+//--- 2 additional buffers
+   IndicatorBuffers(3);
+//---- drawing settings
+   SetIndexStyle(0,DRAW_SECTION);
+//---- indicator buffers
+   SetIndexBuffer(0,ExtZigzagBuffer);
+   SetIndexBuffer(1,ExtHighBuffer);
+   SetIndexBuffer(2,ExtLowBuffer);
+   SetIndexEmptyValue(0,0.0);
+//---- indicator short name
+   IndicatorShortName("ZigZag("+string(InpDepth)+","+string(InpDeviation)+","+string(InpBackstep)+")");
+//---- initialization done
+   return(INIT_SUCCEEDED);
+  }
 //+------------------------------------------------------------------+
-//| Обновление информации на графике                                 |
+//|                                                                  |
 //+------------------------------------------------------------------+
-void OnTick()
-{
-   // Получение текущих значений баланса, эквити, прибыли и убытка
-   Balance = AccountBalance();
-   Equity = AccountEquity();
-   Profit = Equity - Balance;
-   
-
-   // Формирование строки с информацией
-   string info = "Balance: " + DoubleToStr(Balance, 2) + "\n" +
-                 "Equity: " + DoubleToStr(Equity, 2) + "\n" +
-                 "Profit: " + DoubleToStr(Profit, 2);
-
-   // Вывод информации на график
-   Comment(info);
-   ObjectCreate("InfoDisplay", OBJ_LABEL, 0, 0, 0);
-   ObjectSetText("InfoDisplay", info, FontSize, FontName, TextColor);
-   ObjectSet("InfoDisplay", OBJPROP_CORNER, 0);
-   ObjectSet("InfoDisplay", OBJPROP_XDISTANCE, 600);
-   ObjectSet("InfoDisplay", OBJPROP_YDISTANCE, 0);
-}
-
-//+------------------------------------------------------------------+
-//| Удаление объектов при закрытии советника                         |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-   ObjectDelete("InfoDisplay");
-}
-
-//+------------------------------------------------------------------+
-//| Основная функция start()                                         |
-//+------------------------------------------------------------------+
-
-void start()
-{
-   // проверяем наличие открытых ордеров с magic number
-   for(int i = 0; i < OrdersTotal(); i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == magic)
-         {
-            Print("Есть открытый ордер с magic number ", magic);
-            return;
-         }
-      }
-   }
-
-   // ищем горизонтальную линию на графике с именем "Подъём"
-   int line = ObjectFind("Подъём");
-
-   // если линия не найдена, повторяем поиск
-   if(line == -1)
-   {
-      Print("Линия не найдена");
-      return;
-   }
-
-   // если линия найдена, записываем округленное значение до 0.0000 в журнал
-   double level = ObjectGetDouble(0, "Подъём", OBJPROP_PRICE1);
-   Print("Уровень линии: ", DoubleToString(level, 4));
-
-   // измеряем расстояние от линии "Подъём" до значения цены ask
-   price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   distance = MathAbs(price - level);
-
-   // записываем полученное значение в журнал
-   Print("Расстояние от линии до цены ask: ", DoubleToString(distance, 4));
-
-   // определяем положение линии относительно цены ask и записываем в журнал
-   if(level > price)
-   {
-      Print("Линия находится выше цены ask");
-   }
-   else if(level < price)
-   {
-      Print("Линия находится ниже цены ask");
-   }
-   else
-   {
-      Print("Линия находится на уровне цены ask");
-   }
-
-   // устанавливаем уровень тейк профита на значение линии "Подъём"
-   takeProfit = level;
-
-   // проверяем условие для открытия ордера BUY
-   if(distance >= 0.0100)
-   {
-      // отправляем ордер BUY лотом 0.1 в рынок и присваиваем magic 1230
-      double stopLoss = false; // СТОП ЛОСС
-      int ticket = OrderSend(_Symbol, OP_BUY, 0.1, price, 3, stopLoss, takeProfit, "Линия стремления", magic, 0, Green);
-      
-      // проверяем, был ли приказ выполнен
-      if(ticket > 0)
-      {
-         Print("Ордер BUY успешно отправлен. Номер ордера: ", ticket);
-      }
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double &open[],
+                const double &high[],
+                const double &low[],
+                const double &close[],
+                const long& tick_volume[],
+                const long& volume[],
+                const int& spread[])
+  {
+   int    i,limit,counterZ,whatlookfor=0;
+   int    back,pos,lasthighpos=0,lastlowpos=0;
+   double extremum;
+   double curlow=0.0,curhigh=0.0,lasthigh=0.0,lastlow=0.0;
+//--- check for history and inputs
+   if(rates_total<InpDepth || InpBackstep>=InpDepth)
+      return(0);
+//--- first calculations
+   if(prev_calculated==0)
+      limit=InitializeAll();
+   else 
+     {
+      //--- find first extremum in the depth ExtLevel or 100 last bars
+      i=counterZ=0;
+      while(counterZ<ExtLevel && i<100)
+        {
+         if(ExtZigzagBuffer[i]!=0.0)
+            counterZ++;
+         i++;
+        }
+      //--- no extremum found - recounting all from begin
+      if(counterZ==0)
+         limit=InitializeAll();
       else
-      {
-         Print("Ошибка при отправке ордера BUY. Код ошибки: ", GetLastError());
-         return;
-      }
-   }
-}
+        {
+         //--- set start position to found extremum position
+         limit=i-1;
+         //--- what kind of extremum?
+         if(ExtLowBuffer[i]!=0.0) 
+           {
+            //--- low extremum
+            curlow=ExtLowBuffer[i];
+            //--- will look for the next high extremum
+            whatlookfor=1;
+           }
+         else
+           {
+            //--- high extremum
+            curhigh=ExtHighBuffer[i];
+            //--- will look for the next low extremum
+            whatlookfor=-1;
+           }
+         //--- clear the rest data
+         for(i=limit-1; i>=0; i--)  
+           {
+            ExtZigzagBuffer[i]=0.0;  
+            ExtLowBuffer[i]=0.0;
+            ExtHighBuffer[i]=0.0;
+           }
+        }
+     }
+//--- main loop      
+   for(i=limit; i>=0; i--)
+     {
+      //--- find lowest low in depth of bars
+      extremum=low[iLowest(NULL,0,MODE_LOW,InpDepth,i)];
+      //--- this lowest has been found previously
+      if(extremum==lastlow)
+         extremum=0.0;
+      else 
+        { 
+         //--- new last low
+         lastlow=extremum; 
+         //--- discard extremum if current low is too high
+         if(low[i]-extremum>InpDeviation*Point)
+            extremum=0.0;
+         else
+           {
+            //--- clear previous extremums in backstep bars
+            for(back=1; back<=InpBackstep; back++)
+              {
+               pos=i+back;
+               if(ExtLowBuffer[pos]!=0 && ExtLowBuffer[pos]>extremum)
+                  ExtLowBuffer[pos]=0.0; 
+              }
+           }
+        } 
+      //--- found extremum is current low
+      if(low[i]==extremum)
+         ExtLowBuffer[i]=extremum;
+      else
+         ExtLowBuffer[i]=0.0;
+      //--- find highest high in depth of bars
+      extremum=high[iHighest(NULL,0,MODE_HIGH,InpDepth,i)];
+      //--- this highest has been found previously
+      if(extremum==lasthigh)
+         extremum=0.0;
+      else 
+        {
+         //--- new last high
+         lasthigh=extremum;
+         //--- discard extremum if current high is too low
+         if(extremum-high[i]>InpDeviation*Point)
+            extremum=0.0;
+         else
+           {
+            //--- clear previous extremums in backstep bars
+            for(back=1; back<=InpBackstep; back++)
+              {
+               pos=i+back;
+               if(ExtHighBuffer[pos]!=0 && ExtHighBuffer[pos]<extremum)
+                  ExtHighBuffer[pos]=0.0; 
+              } 
+           }
+        }
+      //--- found extremum is current high
+      if(high[i]==extremum)
+         ExtHighBuffer[i]=extremum;
+      else
+         ExtHighBuffer[i]=0.0;
+     }
+//--- final cutting 
+   if(whatlookfor==0)
+     {
+      lastlow=0.0;
+      lasthigh=0.0;  
+     }
+   else
+     {
+      lastlow=curlow;
+      lasthigh=curhigh;
+     }
+   for(i=limit; i>=0; i--)
+     {
+      switch(whatlookfor)
+        {
+         case 0: // look for peak or lawn 
+            if(lastlow==0.0 && lasthigh==0.0)
+              {
+               if(ExtHighBuffer[i]!=0.0)
+                 {
+                  lasthigh=High[i];
+                  lasthighpos=i;
+                  whatlookfor=-1;
+                  ExtZigzagBuffer[i]=lasthigh;
+                 }
+               if(ExtLowBuffer[i]!=0.0)
+                 {
+                  lastlow=Low[i];
+                  lastlowpos=i;
+                  whatlookfor=1;
+                  ExtZigzagBuffer[i]=lastlow;
+                 }
+              }
+             break;  
+         case 1: // look for peak
+            if(ExtLowBuffer[i]!=0.0 && ExtLowBuffer[i]<lastlow && ExtHighBuffer[i]==0.0)
+              {
+               ExtZigzagBuffer[lastlowpos]=0.0;
+               lastlowpos=i;
+               lastlow=ExtLowBuffer[i];
+               ExtZigzagBuffer[i]=lastlow;
+              }
+            if(ExtHighBuffer[i]!=0.0 && ExtLowBuffer[i]==0.0)
+              {
+               lasthigh=ExtHighBuffer[i];
+               lasthighpos=i;
+               ExtZigzagBuffer[i]=lasthigh;
+               whatlookfor=-1;
+              }   
+            break;               
+         case -1: // look for lawn
+            if(ExtHighBuffer[i]!=0.0 && ExtHighBuffer[i]>lasthigh && ExtLowBuffer[i]==0.0)
+              {
+               ExtZigzagBuffer[lasthighpos]=0.0;
+               lasthighpos=i;
+               lasthigh=ExtHighBuffer[i];
+               ExtZigzagBuffer[i]=lasthigh;
+              }
+            if(ExtLowBuffer[i]!=0.0 && ExtHighBuffer[i]==0.0)
+              {
+               lastlow=ExtLowBuffer[i];
+               lastlowpos=i;
+               ExtZigzagBuffer[i]=lastlow;
+               whatlookfor=1;
+              }   
+            break;               
+        }
+     }
+//--- done
+   return(rates_total);
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int InitializeAll()
+  {
+   ArrayInitialize(ExtZigzagBuffer,0.0);
+   ArrayInitialize(ExtHighBuffer,0.0);
+   ArrayInitialize(ExtLowBuffer,0.0);
+//--- first counting position
+   return(Bars-InpDepth);
+  }
+//+------------------------------------------------------------------+
