@@ -13,6 +13,35 @@ extern string lineName = "Линия Стремления"; // имя гориз
 extern int distance = 1000; // дистанция от цены до линии в пунктах
 input double   LotsPercent = 0.01;        //процент от депозита (-1 отключено)
 
+void ModifyTakeProfit() {
+    double line = iCustom(NULL, 0, "lineName", 0, 0);
+    double tp, sl;
+    int ticket;
+    for (int i = OrdersTotal() - 1; i >= 0; i--) {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+            if (OrderType() == OP_SELL) {
+                tp = OrderTakeProfit();
+                if (tp != 0 && line - tp > 101) {
+                    sl = OrderStopLoss();
+                    ticket = OrderTicket();
+                    if (OrderModify(ticket, OrderOpenPrice(), NormalizeDouble(line, Digits), sl, 0, Green)) {
+                        Print("Modified SELL order ", ticket, " TP to ", line);
+                    }
+                }
+            } else if (OrderType() == OP_BUY) {
+                tp = OrderTakeProfit();
+                if (tp != 0 && tp - line > 101) {
+                    sl = OrderStopLoss();
+                    ticket = OrderTicket();
+                    if (OrderModify(ticket, OrderOpenPrice(), NormalizeDouble(line, Digits), sl, 0, Green)) {
+                        Print("Modified BUY order ", ticket, " TP to ", line);
+                    }
+                }
+            }
+        }
+    }
+}
+
 void OnTick()
 {
     double currentPrice = MarketInfo(Symbol(), MODE_BID); // текущая цена
@@ -103,6 +132,7 @@ else
         Print("Линия не найдена");
     }
 }
+
 //Советник работает следующим образом:
 
 //1. В начале функции OnTick() получаем текущую цену и ищем линию по заданному имени с помощью функции ObjectFind().
